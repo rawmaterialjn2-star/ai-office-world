@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 
 interface Player {
   id: string;
@@ -65,25 +66,38 @@ export default function Arena({
 }) {
   const [state, setState] = useState<GameState | null>(null);
 
-  // =========================
+  // =========================================================
+  // ROOM
+  // =========================================================
+
+  const [room, setRoom] = useState('');
+
+  // =========================================================
+  // QR CODE
+  // =========================================================
+
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [joinUrl, setJoinUrl] = useState('');
+
+  // =========================================================
   // ASTRA VOICE
-  // =========================
+  // =========================================================
 
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [speaking, setSpeaking] = useState(false);
 
-  // =========================
+  // =========================================================
   // MICROPHONE
-  // =========================
+  // =========================================================
 
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [voiceError, setVoiceError] = useState('');
 
-  // =========================
+  // =========================================================
   // ASTRA RESPONSE
-  // =========================
+  // =========================================================
 
   const [astraReply, setAstraReply] = useState(
     'ASTRA siap mendengarkan jawabanmu...'
@@ -98,11 +112,79 @@ export default function Arena({
   const restartTimerRef = useRef<number | null>(null);
 
   // =========================================================
+  // GET ROOM FROM PARAMS
+  // =========================================================
+
+  useEffect(() => {
+    let active = true;
+
+    params.then((value) => {
+      if (active) {
+        setRoom(value.room);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [params]);
+
+  // =========================================================
+  // GENERATE QR CODE
+  // =========================================================
+
+  useEffect(() => {
+    if (!room || typeof window === 'undefined') {
+      return;
+    }
+
+    const generateQR = async () => {
+      try {
+        /*
+         * Saat online:
+         * https://ai-office-world.vercel.app/play/ABC123
+         *
+         * Saat localhost:
+         * http://localhost:3000/play/ABC123
+         *
+         * Jadi ketika sudah deploy ke Vercel,
+         * QR otomatis mengarah ke project Vercel.
+         */
+
+        const url = `${window.location.origin}/play/${encodeURIComponent(
+          room
+        )}`;
+
+        setJoinUrl(url);
+
+        const qr = await QRCode.toDataURL(url, {
+          width: 320,
+          margin: 2,
+          errorCorrectionLevel: 'H',
+          color: {
+            dark: '#0f172a',
+            light: '#ffffff',
+          },
+        });
+
+        setQrCodeUrl(qr);
+      } catch (error) {
+        console.error('QR generation error:', error);
+        setQrCodeUrl('');
+      }
+    };
+
+    void generateQR();
+  }, [room]);
+
+  // =========================================================
   // GET INDONESIAN MALE VOICE
   // =========================================================
 
   const getAstraVoice = useCallback(() => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === 'undefined') {
+      return null;
+    }
 
     const voices = window.speechSynthesis.getVoices();
 
@@ -110,8 +192,6 @@ export default function Arena({
       return null;
     }
 
-    // Prioritas utama:
-    // voice Indonesia dengan nama yang biasanya terdengar maskulin.
     const maleIndonesianVoice = voices.find(
       (voice) =>
         voice.lang.toLowerCase().startsWith('id') &&
@@ -124,7 +204,6 @@ export default function Arena({
       return maleIndonesianVoice;
     }
 
-    // Kalau tidak ada, ambil voice Indonesia.
     const indonesianVoice = voices.find((voice) =>
       voice.lang.toLowerCase().startsWith('id')
     );
@@ -133,7 +212,6 @@ export default function Arena({
       return indonesianVoice;
     }
 
-    // Fallback voice bahasa Inggris.
     const englishVoice = voices.find((voice) =>
       voice.lang.toLowerCase().startsWith('en')
     );
@@ -167,8 +245,6 @@ export default function Arena({
         }
 
         utterance.lang = 'id-ID';
-
-        // Suara lebih berat dan santai
         utterance.rate = 0.88;
         utterance.pitch = 0.78;
         utterance.volume = 1;
@@ -207,7 +283,6 @@ export default function Arena({
 
     const lower = clean.toLowerCase();
 
-    // Coconut Oil
     if (
       lower.includes('coconut') ||
       lower.includes('cno') ||
@@ -216,7 +291,6 @@ export default function Arena({
       return `Jawabanmu "${clean}". Nah, ini baru ada isinya! ASTRA kasih respect. Jangan geer dulu, ronde berikutnya bisa lebih kejam.`;
     }
 
-    // Palm Olein
     if (
       lower.includes('palm') ||
       lower.includes('olein') ||
@@ -225,7 +299,6 @@ export default function Arena({
       return `ASTRA mendengar "${clean}". Lumayan! Otak warehouse mulai panas. Pertahankan, jangan sampai kalah sama printer.`;
     }
 
-    // HFS
     if (
       lower.includes('hfs') ||
       lower.includes('fruktosa') ||
@@ -234,7 +307,6 @@ export default function Arena({
       return `Ohhh HFS! ASTRA suka jawaban seperti ini. Ada yang mulai serius mainnya. Tapi jangan senang dulu.`;
     }
 
-    // Glucose
     if (
       lower.includes('glucose') ||
       lower.includes('glukosa')
@@ -242,12 +314,10 @@ export default function Arena({
       return `Glucose? Oke, otakmu ternyata masih mengandung glukosa. Jawaban diterima secara moral oleh ASTRA.`;
     }
 
-    // Terlalu pendek
     if (clean.length < 4) {
       return `Cuma "${clean}"? ASTRA minta jawaban, bukan password WiFi. Coba lagi!`;
     }
 
-    // Terlalu panjang
     if (clean.length > 100) {
       return `ASTRA mendengar ceramah sepanjang "${clean.slice(
         0,
@@ -255,7 +325,6 @@ export default function Arena({
       )}..." Santai. Ini game, bukan meeting KPI tiga jam.`;
     }
 
-    // Jawaban biasa
     return `ASTRA mendengar: "${clean}". Hmm... menarik. Jawabanmu dicatat. Jangan senang dulu, ASTRA belum selesai menguji kamu.`;
   }, []);
 
@@ -285,7 +354,6 @@ export default function Arena({
     }
 
     try {
-      // Hentikan recognition lama
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
@@ -300,18 +368,10 @@ export default function Arena({
       recognition.interimResults = true;
       recognition.lang = 'id-ID';
 
-      // =========================
-      // START
-      // =========================
-
       recognition.onstart = () => {
         setListening(true);
         setVoiceError('');
       };
-
-      // =========================
-      // RESULT
-      // =========================
 
       recognition.onresult = (event) => {
         let finalText = '';
@@ -340,7 +400,6 @@ export default function Arena({
 
           setAstraReply(reply);
 
-          // ASTRA jawab setelah suara masuk.
           window.setTimeout(() => {
             speakAstra(reply);
           }, 300);
@@ -348,10 +407,6 @@ export default function Arena({
 
         setInterimTranscript(interimText);
       };
-
-      // =========================
-      // ERROR
-      // =========================
 
       recognition.onerror = (event) => {
         console.log(
@@ -388,24 +443,17 @@ export default function Arena({
         setListening(false);
       };
 
-      // =========================
-      // END
-      // =========================
-
       recognition.onend = () => {
         setListening(false);
 
-        // Jangan restart kalau voice dimatikan.
         if (!voiceEnabled) {
           return;
         }
 
-        // Jangan restart ketika game sedang waiting.
         if (!state || state.status === 'waiting') {
           return;
         }
 
-        // Hindari restart terlalu cepat.
         if (restartTimerRef.current) {
           window.clearTimeout(
             restartTimerRef.current
@@ -417,7 +465,7 @@ export default function Arena({
             try {
               recognition.start();
             } catch {
-              // Browser mungkin sedang menjalankan recognition.
+              // Browser mungkin masih menjalankan recognition.
             }
           }, 700);
       };
@@ -480,7 +528,6 @@ export default function Arena({
     setVoiceEnabled(true);
     setVoiceError('');
 
-    // Pastikan browser sudah load daftar voice.
     const speakIntro = () => {
       window.speechSynthesis.cancel();
 
@@ -497,8 +544,6 @@ export default function Arena({
       }
 
       utterance.lang = 'id-ID';
-
-      // Intro dibuat sedikit santai
       utterance.rate = 0.9;
       utterance.pitch = 0.78;
       utterance.volume = 1;
@@ -527,8 +572,6 @@ export default function Arena({
       );
     };
 
-    // Beberapa browser baru mengisi voices
-    // setelah event voiceschanged.
     const voices =
       window.speechSynthesis.getVoices();
 
@@ -590,7 +633,6 @@ export default function Arena({
       }
     };
 
-    void params;
     void load();
 
     const interval =
@@ -606,6 +648,16 @@ export default function Arena({
       );
     };
   }, [params]);
+
+  // =========================================================
+  // UPDATE ROOM FROM GAME STATE
+  // =========================================================
+
+  useEffect(() => {
+    if (state?.room) {
+      setRoom(state.room);
+    }
+  }, [state?.room]);
 
   // =========================================================
   // READ QUESTION WHEN ROUND CHANGES
@@ -657,8 +709,6 @@ export default function Arena({
       window.setTimeout(() => {
         speakAstra(text);
 
-        // Tunggu ASTRA selesai bicara
-        // lalu mulai mendengarkan.
         window.setTimeout(() => {
           startListening();
         }, 1800);
@@ -766,11 +816,13 @@ export default function Arena({
 
   return (
     <main className="arena">
-      {/* ================================================= */}
-      {/* TOP BAR */}
-      {/* ================================================= */}
+
+      {/* =====================================================
+          TOP BAR
+      ===================================================== */}
 
       <div className="arenaTop">
+
         <div>
           <div className="round">
             MAYORA JAYANTI 2
@@ -798,67 +850,90 @@ export default function Arena({
             {state.roundName}
           </div>
         </div>
+
       </div>
 
-      {/* ================================================= */}
-      {/* WORLD */}
-      {/* ================================================= */}
+      {/* =====================================================
+          WORLD
+      ===================================================== */}
 
       <div className="world">
+
         <div className="building" />
 
         <div className="worldFloor" />
 
-        {/* ================================================= */}
-        {/* PLAYERS */}
-        {/* ================================================= */}
+        {/* ===================================================
+            PLAYER LIST
+        =================================================== */}
 
         <div className="playersArena">
-          {state.players.map(
-            (player) => (
-              <div
-                className="arenaPlayer"
-                key={player.id}
-              >
-                <div className="profileRow">
-                  <div className="avatar">
-                    {player.avatar}
-                  </div>
 
-                  <div>
-                    <strong>
-                      {player.name}
-                    </strong>
-
-                    <div className="small">
-                      LV {player.level} ·{' '}
-                      {player.score} pts
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bar">
-                  <span
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        10 +
-                          player.level *
-                            15
-                      )}%`,
-                    }}
-                  />
-                </div>
+          {state.players.length === 0 ? (
+            <div
+              className="arenaPlayer"
+              style={{
+                textAlign: 'center',
+                opacity: 0.7,
+              }}
+            >
+              <div className="small">
+                Belum ada player yang join.
               </div>
+            </div>
+          ) : (
+            state.players.map(
+              (player) => (
+                <div
+                  className="arenaPlayer"
+                  key={player.id}
+                >
+
+                  <div className="profileRow">
+
+                    <div className="avatar">
+                      {player.avatar}
+                    </div>
+
+                    <div>
+                      <strong>
+                        {player.name}
+                      </strong>
+
+                      <div className="small">
+                        LV {player.level} ·{' '}
+                        {player.score} pts
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <div className="bar">
+                    <span
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          10 +
+                            player.level *
+                              15
+                        )}%`,
+                      }}
+                    />
+                  </div>
+
+                </div>
+              )
             )
           )}
+
         </div>
 
-        {/* ================================================= */}
-        {/* LOCATION */}
-        {/* ================================================= */}
+        {/* ===================================================
+            LOCATION
+        =================================================== */}
 
         <div className="locationBanner">
+
           <p>
             {state.status ===
             'waiting'
@@ -869,11 +944,12 @@ export default function Arena({
           <h1>
             {state.location}
           </h1>
+
         </div>
 
-        {/* ================================================= */}
-        {/* ROUND CARD */}
-        {/* ================================================= */}
+        {/* ===================================================
+            MAIN GAME CARD
+        =================================================== */}
 
         <div
           className="roundCard"
@@ -882,9 +958,10 @@ export default function Arena({
             overflow: 'hidden',
           }}
         >
-          {/* ================================================= */}
-          {/* ASTRA HEADER */}
-          {/* ================================================= */}
+
+          {/* =================================================
+              ASTRA HEADER
+          ================================================= */}
 
           <div
             className="ai"
@@ -896,6 +973,7 @@ export default function Arena({
               gap: 12,
             }}
           >
+
             <span>
               🤖 ASTRA · AI GAME MASTER
             </span>
@@ -922,30 +1000,143 @@ export default function Arena({
                 ? '🎤 MENDENGARKAN'
                 : '⏸ SIAP'}
             </span>
+
           </div>
 
-          {/* ================================================= */}
-          {/* QUESTION */}
-          {/* ================================================= */}
+          {/* =================================================
+              QUESTION
+          ================================================= */}
 
           <div className="question">
             {state.question}
           </div>
 
-          {/* ================================================= */}
-          {/* WAITING */}
-          {/* ================================================= */}
+          {/* =================================================
+              WAITING SCREEN
+          ================================================= */}
 
           {state.status ===
           'waiting' ? (
             <>
+
+              {/* =============================================
+                  QR JOIN
+              ============================================= */}
+
+              <div
+                style={{
+                  marginTop: 18,
+                  padding: 18,
+                  borderRadius: 20,
+                  background:
+                    'rgba(255,255,255,.97)',
+                  color: '#0f172a',
+                  textAlign: 'center',
+                  boxShadow:
+                    '0 12px 35px rgba(0,0,0,.25)',
+                }}
+              >
+
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 900,
+                    letterSpacing: 1,
+                    marginBottom: 12,
+                  }}
+                >
+                  📱 SCAN QR UNTUK JOIN
+                </div>
+
+                {qrCodeUrl ? (
+                  <img
+                    src={qrCodeUrl}
+                    alt={`QR Join Room ${room}`}
+                    style={{
+                      width: 'min(280px, 70vw)',
+                      maxWidth: 280,
+                      height: 'auto',
+                      display: 'block',
+                      margin:
+                        '0 auto',
+                      borderRadius: 12,
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 220,
+                      height: 220,
+                      margin:
+                        '0 auto',
+                      display:
+                        'flex',
+                      alignItems:
+                        'center',
+                      justifyContent:
+                        'center',
+                      borderRadius: 12,
+                      background:
+                        '#e2e8f0',
+                      color:
+                        '#475569',
+                      fontWeight: 800,
+                    }}
+                  >
+                    MEMBUAT QR...
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    marginTop: 14,
+                    fontSize: 22,
+                    fontWeight: 900,
+                    letterSpacing: 4,
+                  }}
+                >
+                  ROOM {room}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 12,
+                    color:
+                      '#64748b',
+                  }}
+                >
+                  Scan menggunakan HP
+                  masing-masing
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 10,
+                    color:
+                      '#94a3b8',
+                    wordBreak:
+                      'break-all',
+                  }}
+                >
+                  {joinUrl}
+                </div>
+
+              </div>
+
+              {/* =============================================
+                  ASTRA BUTTON
+              ============================================= */}
+
               <div
                 className="small"
                 style={{
-                  marginTop: 10,
+                  marginTop: 16,
                 }}
               >
-                SCAN QR DI TV UNTUK JOIN
+                ASTRA siap menyambut para
+                pemain.
               </div>
 
               {!voiceEnabled ? (
@@ -989,12 +1180,15 @@ export default function Arena({
                   🔇 MATIKAN SUARA
                 </button>
               )}
+
             </>
           ) : (
+
+            /* =================================================
+               ACTIVE GAME
+            ================================================= */
+
             <>
-              {/* ================================================= */}
-              {/* COUNTDOWN */}
-              {/* ================================================= */}
 
               <div
                 style={{
@@ -1009,9 +1203,9 @@ export default function Arena({
                   : 'GO!'}
               </div>
 
-              {/* ================================================= */}
-              {/* MICROPHONE MONITOR */}
-              {/* ================================================= */}
+              {/* =============================================
+                  MICROPHONE MONITOR
+              ============================================= */}
 
               <div
                 style={{
@@ -1025,7 +1219,6 @@ export default function Arena({
                     : '2px solid rgba(255,255,255,.12)',
                 }}
               >
-                {/* HEADER */}
 
                 <div
                   style={{
@@ -1038,6 +1231,7 @@ export default function Arena({
                     marginBottom: 10,
                   }}
                 >
+
                   <strong>
                     {listening
                       ? '🎤 SUARA MASUK'
@@ -1058,11 +1252,12 @@ export default function Arena({
                       ? 'LIVE'
                       : 'MENUNGGU'}
                   </span>
+
                 </div>
 
-                {/* ================================================= */}
-                {/* VOICE VISUALIZER */}
-                {/* ================================================= */}
+                {/* =========================================
+                    SOUND WAVE
+                ========================================= */}
 
                 <div
                   style={{
@@ -1080,6 +1275,7 @@ export default function Arena({
                       12,
                   }}
                 >
+
                   {Array.from({
                     length: 28,
                   }).map(
@@ -1109,11 +1305,12 @@ export default function Arena({
                       />
                     )
                   )}
+
                 </div>
 
-                {/* ================================================= */}
-                {/* TRANSCRIPT */}
-                {/* ================================================= */}
+                {/* =========================================
+                    TRANSCRIPT
+                ========================================= */}
 
                 <div
                   style={{
@@ -1127,10 +1324,6 @@ export default function Arena({
                 >
                   {displayTranscript}
                 </div>
-
-                {/* ================================================= */}
-                {/* ERROR */}
-                {/* ================================================= */}
 
                 {voiceError && (
                   <div
@@ -1148,11 +1341,12 @@ export default function Arena({
                     ⚠️ {voiceError}
                   </div>
                 )}
+
               </div>
 
-              {/* ================================================= */}
-              {/* ASTRA RESPONSE */}
-              {/* ================================================= */}
+              {/* =============================================
+                  ASTRA RESPONSE
+              ============================================= */}
 
               <div
                 style={{
@@ -1165,6 +1359,7 @@ export default function Arena({
                     '1px solid rgba(167,139,250,.3)',
                 }}
               >
+
                 <div
                   style={{
                     fontSize: 12,
@@ -1184,11 +1379,16 @@ export default function Arena({
                 >
                   {astraReply}
                 </div>
+
               </div>
+
             </>
           )}
+
         </div>
+
       </div>
+
     </main>
   );
 }
